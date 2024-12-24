@@ -4,7 +4,7 @@ import numpy as np
 from ultralytics import YOLO
 import supervision as sv
 
-def process_video_with_debug(model_path, video_path, output_path):
+def process_yolo_video(model_path, video_path, output_path):
     model = YOLO(model_path)
     tracker = sv.ByteTrack(lost_track_buffer=30)
 
@@ -68,7 +68,7 @@ def process_video_with_debug(model_path, video_path, output_path):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    process_video_with_debug(
+    process_yolo_video(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
         output_path='output_video/debug_tracked2.mp4'
