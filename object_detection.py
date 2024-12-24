@@ -2,59 +2,74 @@ import cv2
 import torch
 import numpy as np
 from ultralytics import YOLO
+import supervision as sv
 
-# Load YOLO model
-model = YOLO('models/object.pt') 
+def process_video_with_debug(model_path, video_path, output_path):
+    model = YOLO(model_path)
+    tracker = sv.ByteTrack(lost_track_buffer=30)
 
-# Video file path
-video_path = 'input_video/08fd33_4.mp4'
-output_path = 'output_video/annotated_match.mp4'
+    cap = cv2.VideoCapture(video_path)
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
-# Video capture and output setup
-cap = cv2.VideoCapture(video_path)
-frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-fps = int(cap.get(cv2.CAP_PROP_FPS))
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-# Batch processing parameters
-batch_size = 16
-frames = []
-frame_indices = []
+        # Convert frame for YOLO and run inference
+        batch = [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)]
+        results = model(batch)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+        # Debug: Check YOLO detections
+        result = results[0]
+        print(f"Detections: {len(result.boxes)}")
+        
+        # Build detections for tracker
+        bboxes, confidences, class_ids = [], [], []
+        for detection in result.boxes:
+            class_id = int(detection.cls[0])
+            confidence = detection.conf[0]
 
-    # Add frame to batch
-    frames.append(frame)
-    frame_indices.append(cap.get(cv2.CAP_PROP_POS_FRAMES))  # Optional: Track frame indices
+            # Debug: Print detection info
+            print(f"Class ID: {class_id}, Confidence: {confidence}")
 
-    # Process batch
-    if len(frames) == batch_size:
-        # Convert frames to a batch of images
-        batch = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in frames]  # Convert BGR to RGB for YOLO
-        results = model(batch)  # Run inference on batch
+            # Use a lower threshold for the ball (class_id == 0 in this example)
+            if (class_id == 0 and confidence >= 0.25) or confidence >= 0.3:
+                x1, y1, x2, y2 = detection.xyxy[0]
+                bboxes.append([x1, y1, x2, y2])
+                confidences.append(confidence)
+                class_ids.append(class_id)
 
-        # Annotate and write results
-        for result, frame in zip(results, frames):
-            annotated_frame = result.plot()  # Use `plot()` for visualization
-            out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))  # Convert back to BGR and save
-        frames.clear()  # Clear batch
+        # Create detection object
+        detections = sv.Detections(xyxy=np.array(bboxes), confidence=np.array(confidences), class_id=np.array(class_ids))
+        print(f"Detections ready for tracker: {detections.xyxy.shape[0]}")
 
-# Process remaining frames in the last batch
-if frames:
-    batch = [cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in frames]
-    results = model(batch)
-    for result, frame in zip(results, frames):
-        annotated_frame = result.plot()
-        out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
+        # Update tracker
+        tracks = tracker.update_with_detections(detections)
+        print(f"Tracks: {len(tracks)}")
 
-cap.release()
-out.release()
-cv2.destroyAllWindows()
+        # Annotate frame
+        for track in tracks:
+            bbox = track[0]  # [x1, y1, x2, y2]
+            track_id = track[4]  # Assuming track[4] contains the track ID
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+            label = f"ID: {track_id}"
+            cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-print(f"Annotated video saved to {output_path}")
+        # Write annotated frame
+        out.write(frame)
 
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    process_video_with_debug(
+        model_path='models/object.pt',
+        video_path='input_video/08fd33_4.mp4',
+        output_path='output_video/debug_tracked2.mp4'
+    )
