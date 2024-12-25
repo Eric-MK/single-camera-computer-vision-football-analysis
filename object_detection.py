@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from ultralytics import YOLO
 import supervision as sv
+from teams import group_players_by_color, assign_goalkeeper_to_team, get_dominant_color
 
 def process_yolo_video(model_path, video_path, output_path):
     model = YOLO(model_path)
@@ -15,50 +16,61 @@ def process_yolo_video(model_path, video_path, output_path):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    player_colors = []
+    player_bboxes = []
+    player_class_ids = []
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Convert frame for YOLO and run inference
+        # YOLO Inference
         batch = [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)]
         results = model(batch)
-
-        # Debug: Check YOLO detections
         result = results[0]
-        print(f"Detections: {len(result.boxes)}")
-        
-        # Build detections for tracker
+
         bboxes, confidences, class_ids = [], [], []
+
         for detection in result.boxes:
             class_id = int(detection.cls[0])
             confidence = detection.conf[0]
 
-            # Debug: Print detection info
-            print(f"Class ID: {class_id}, Confidence: {confidence}")
-
-            # Use a lower threshold for the ball (class_id == 0 in this example)
-            if (class_id == 0 and confidence >= 0.25) or confidence >= 0.3:
+            if confidence >= 0.3:
                 x1, y1, x2, y2 = detection.xyxy[0]
                 bboxes.append([x1, y1, x2, y2])
                 confidences.append(confidence)
                 class_ids.append(class_id)
 
-        # Create detection object
-        detections = sv.Detections(xyxy=np.array(bboxes), confidence=np.array(confidences), class_id=np.array(class_ids))
-        print(f"Detections ready for tracker: {detections.xyxy.shape[0]}")
+                # Extract jersey colors for players and goalkeepers
+                if class_id == 2:  # Players
+                    color = get_dominant_color(frame, [x1, y1, x2, y2])
+                    player_colors.append(color)
+                    player_bboxes.append([x1, y1, x2, y2])
+                    player_class_ids.append(class_id)
 
-        # Update tracker
-        tracks = tracker.update_with_detections(detections)
-        print(f"Tracks: {len(tracks)}")
+                if class_id == 1:  # Goalkeeper
+                    goalkeeper_color = get_dominant_color(frame, [x1, y1, x2, y2])
+                    goalkeeper_bbox = [x1, y1, x2, y2]
 
-        # Annotate frame
-        for track in tracks:
-            bbox = track[0]  # [x1, y1, x2, y2]
-            track_id = track[4]  # Assuming track[4] contains the track ID
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-            label = f"ID: {track_id}"
-            cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        # Group players into teams
+        if player_colors:  # Ensure at least some players are detected
+            team_labels, team_centers = group_players_by_color(player_colors)
+            goalkeeper_team = assign_goalkeeper_to_team(goalkeeper_color, team_centers)
+
+            # Annotate frame
+            for i, bbox in enumerate(player_bboxes):
+                x1, y1, x2, y2 = map(int, bbox)
+                team = team_labels[i]
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                label = f"Team {team}"
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # Annotate goalkeeper
+            x1, y1, x2, y2 = map(int, goalkeeper_bbox)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            label = f"Goalkeeper Team {goalkeeper_team}"
+            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
         # Write annotated frame
         out.write(frame)
@@ -66,6 +78,7 @@ def process_yolo_video(model_path, video_path, output_path):
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     process_yolo_video(
