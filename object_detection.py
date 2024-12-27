@@ -4,10 +4,14 @@ from sklearn.cluster import KMeans
 from ultralytics import YOLO
 import supervision as sv
 
-def get_dominant_color(image, bbox):
-    """Extract the dominant color from a bounding box region in the image."""
+def get_dominant_color(image, bbox, torso_ratio=0.6):
+    """Extract the dominant color from the upper body region (jersey) of the player."""
     x1, y1, x2, y2 = bbox
-    player_crop = image[int(y1):int(y2), int(x1):int(x2)]
+    # Calculate the upper torso region (top 60% of the bounding box)
+    torso_y1 = int(y1)
+    torso_y2 = int(y1 + (y2 - y1) * torso_ratio)  # Masking bottom part to only include upper body
+    player_crop = image[torso_y1:torso_y2, int(x1):int(x2)]
+
     # Convert the cropped region to HSV
     hsv_image = cv2.cvtColor(player_crop, cv2.COLOR_BGR2HSV)
     
@@ -81,8 +85,8 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
             bbox = track[0]  # [x1, y1, x2, y2]
             class_id = track[3]  # class_id (track[3] is where class_id is stored)
 
-            if class_id != 0:  # Ignore ball for dominant color collection
-                # Get the dominant color of the player's jersey
+            if class_id != 0 and class_id != 3:  # Ignore ball (ID = 0) and referee (ID = 3)
+                # Get the dominant color of the player's jersey (upper body only)
                 dominant_color = get_dominant_color(frame, bbox)
                 all_dominant_colors.append(dominant_color)
 
@@ -100,7 +104,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
             if class_id == 0:  # Ball class (ID = 0)
                 # Draw blue triangle for the ball
                 draw_blue_triangle(frame, bbox)
-            else:
+            elif class_id != 3:  # Skip annotating referees (class_id == 3)
                 # Get the dominant color of the player's jersey
                 dominant_color = get_dominant_color(frame, bbox)
 
@@ -127,5 +131,5 @@ if __name__ == "__main__":
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked2.mp4'
+        output_path='output_video/teams_tracked_referee.mp4'
     )
