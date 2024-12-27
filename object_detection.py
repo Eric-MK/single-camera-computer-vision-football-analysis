@@ -15,6 +15,14 @@ def process_yolo_video(model_path, video_path, output_path):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    # Define colors for each class (BGR format)
+    colors = {
+        0: (0, 0, 255),  # Ball: Red
+        1: (0, 255, 0),  # Goalkeeper: Green
+        2: (255, 0, 0),  # Player: Blue
+        3: (0, 255, 255),  # Referee: Yellow
+    }
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -52,13 +60,26 @@ def process_yolo_video(model_path, video_path, output_path):
         tracks = tracker.update_with_detections(detections)
         print(f"Tracks: {len(tracks)}")
 
-        # Annotate frame
+        # Annotate frame with different colors for each class
         for track in tracks:
+            # Debug: Print track to see its structure
+           # print(f"Track: {track}")
+            
             bbox = track[0]  # [x1, y1, x2, y2]
             track_id = track[4]  # Assuming track[4] contains the track ID
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+
+            # Extract class ID from track[3] (this is where the class ID is stored)
+            class_id = int(track[3])  # Class ID is at index 3
+
+            # Get the color based on class_id
+            color = colors.get(class_id, (255, 255, 255))  # Default to white if class_id not in colors
+
+            # Draw bounding box
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
+
+            # Label the tracked object
             label = f"ID: {track_id}"
-            cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
         # Write annotated frame
         out.write(frame)
