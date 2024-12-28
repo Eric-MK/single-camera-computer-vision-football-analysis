@@ -62,12 +62,14 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
             bbox = track[0]  # [x1, y1, x2, y2]
             class_id = track[3]  # Get class_id
 
+            is_goalkeeper = (class_id == 1)  # Assuming class_id 1 is goalkeeper; adjust as needed
+
             if class_id == 0:  # Ball class (ID = 0)
                 # Draw blue triangle for the ball
                 draw_blue_triangle(frame, bbox)
             elif class_id != 3:  # Skip annotating referees (class_id == 3)
                 # Get the jersey color using the provided functions
-                jersey_color = get_jersey_color(frame, bbox, is_goalkeeper=False)
+                jersey_color = get_jersey_color(frame, bbox, is_goalkeeper=is_goalkeeper)
 
                 # Determine the club using the jersey color
                 distances_to_club1 = np.linalg.norm(np.array(jersey_color) - np.array(club1.player_jersey_color))
@@ -90,6 +92,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
     out.release()
     cv2.destroyAllWindows()
 
+
 if __name__ == "__main__":
     from team_functions import Club
 
@@ -100,7 +103,7 @@ if __name__ == "__main__":
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked_km.mp4',
+        output_path='output_video/teams_tracked_gk.mp4',
         club1=club1,
         club2=club2
     )
