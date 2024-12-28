@@ -26,10 +26,16 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    possession_team1 = 0  # Time the ball is close to Team 1
+    possession_team2 = 0  # Time the ball is close to Team 2
+    total_frames = 0      # Count total frames processed
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+
+        total_frames += 1
 
         # Convert frame for YOLO and run inference
         batch = [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)]
@@ -45,7 +51,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
             confidence = detection.conf[0]
 
             # Exclude ball (class_id == 0) and referee (class_id == 3)
-            if class_id != 3 and confidence >= 0.25:  # Exclude referees
+            if class_id != 3 and confidence >= 0.25:
                 x1, y1, x2, y2 = detection.xyxy[0]
                 bboxes.append([x1, y1, x2, y2])
                 confidences.append(confidence)
@@ -57,6 +63,9 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
         # Update tracker
         tracks = tracker.update_with_detections(detections)
 
+        ball_position = None
+        players = []
+
         # Annotate frame with team colors and blue triangle for the ball
         for track in tracks:
             bbox = track[0]  # [x1, y1, x2, y2]
@@ -67,6 +76,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
             if class_id == 0:  # Ball class (ID = 0)
                 # Draw blue triangle for the ball
                 draw_blue_triangle(frame, bbox)
+                ball_position = bbox
             elif class_id != 3:  # Skip annotating referees (class_id == 3)
                 # Get the jersey color using the provided functions
                 jersey_color = get_jersey_color(frame, bbox, is_goalkeeper=is_goalkeeper)
@@ -85,12 +95,45 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
                 cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), team_color, 2)
                 cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, team_color, 2)
 
+                # Collect player information for possession calculation
+                players.append((bbox, team_id))
+
+        # Calculate possession
+        if ball_position is not None:
+            ball_x, ball_y = (ball_position[0] + ball_position[2]) / 2, (ball_position[1] + ball_position[3]) / 2
+            closest_team = None
+            min_distance = float('inf')
+
+            for player_bbox, team_id in players:
+                player_x, player_y = (player_bbox[0] + player_bbox[2]) / 2, (player_bbox[1] + player_bbox[3]) / 2
+                distance = np.sqrt((ball_x - player_x) ** 2 + (ball_y - player_y) ** 2)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_team = team_id
+
+            if closest_team == 0:
+                possession_team1 += 1
+            elif closest_team == 1:
+                possession_team2 += 1
+
+        # Display possession percentages
+        total_possession = possession_team1 + possession_team2
+        if total_possession > 0:
+            possession_percent_team1 = (possession_team1 / total_possession) * 100
+            possession_percent_team2 = (possession_team2 / total_possession) * 100
+        else:
+            possession_percent_team1 = possession_percent_team2 = 0
+
+        text = f"Team 1: {possession_percent_team1:.1f}% | Team 2: {possession_percent_team2:.1f}%"
+        cv2.putText(frame, text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
         # Write annotated frame
         out.write(frame)
 
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+
 
 
 if __name__ == "__main__":
