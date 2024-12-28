@@ -1,30 +1,10 @@
 import cv2
 import numpy as np
-from sklearn.cluster import KMeans
 from ultralytics import YOLO
 import supervision as sv
-
-def get_dominant_color(image, bbox, torso_ratio=0.6):
-    """Extract the dominant color from the upper body region (jersey) of the player."""
-    x1, y1, x2, y2 = bbox
-    # Calculate the upper torso region (top 60% of the bounding box)
-    torso_y1 = int(y1)
-    torso_y2 = int(y1 + (y2 - y1) * torso_ratio)  # Masking bottom part to only include upper body
-    player_crop = image[torso_y1:torso_y2, int(x1):int(x2)]
-
-    # Convert the cropped region to HSV
-    hsv_image = cv2.cvtColor(player_crop, cv2.COLOR_BGR2HSV)
-    
-    # Reshape the image into a list of pixels
-    pixels = hsv_image.reshape((-1, 3))
-    
-    # Apply KMeans clustering to find the dominant color
-    kmeans = KMeans(n_clusters=1)
-    kmeans.fit(pixels)
-    
-    # Return the dominant color (centroid of the cluster)
-    dominant_color = kmeans.cluster_centers_[0]
-    return dominant_color
+from team_functions import (
+    get_jersey_color
+)
 
 def draw_blue_triangle(frame, bbox):
     """Draw a blue triangle to represent the ball on the frame."""
@@ -35,7 +15,7 @@ def draw_blue_triangle(frame, bbox):
     points = np.array([(center_x, center_y - 20), (center_x - 20, center_y + 20), (center_x + 20, center_y + 20)])
     cv2.polylines(frame, [points], isClosed=True, color=(255, 0, 0), thickness=2)  # Blue color (BGR format)
 
-def process_yolo_video_with_teams(model_path, video_path, output_path):
+def process_yolo_video_with_teams(model_path, video_path, output_path, club1, club2):
     model = YOLO(model_path)
     tracker = sv.ByteTrack(lost_track_buffer=30)
 
@@ -45,9 +25,6 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-
-    team_colors = []
-    all_dominant_colors = []
 
     while True:
         ret, frame = cap.read()
@@ -80,22 +57,6 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
         # Update tracker
         tracks = tracker.update_with_detections(detections)
 
-        # Collect dominant colors for clustering (excluding ball and referee)
-        for track in tracks:
-            bbox = track[0]  # [x1, y1, x2, y2]
-            class_id = track[3]  # class_id (track[3] is where class_id is stored)
-
-            if class_id != 0 and class_id != 3:  # Ignore ball (ID = 0) and referee (ID = 3)
-                # Get the dominant color of the player's jersey (upper body only)
-                dominant_color = get_dominant_color(frame, bbox)
-                all_dominant_colors.append(dominant_color)
-
-        # Perform K-means clustering on the collected dominant colors
-        if len(all_dominant_colors) > 0:
-            kmeans = KMeans(n_clusters=2)  # We are always clustering into two teams
-            kmeans.fit(all_dominant_colors)
-            team_colors = kmeans.cluster_centers_
-
         # Annotate frame with team colors and blue triangle for the ball
         for track in tracks:
             bbox = track[0]  # [x1, y1, x2, y2]
@@ -105,15 +66,17 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
                 # Draw blue triangle for the ball
                 draw_blue_triangle(frame, bbox)
             elif class_id != 3:  # Skip annotating referees (class_id == 3)
-                # Get the dominant color of the player's jersey
-                dominant_color = get_dominant_color(frame, bbox)
+                # Get the jersey color using the provided functions
+                jersey_color = get_jersey_color(frame, bbox, is_goalkeeper=False)
 
-                # Find the closest cluster (team) for this color
-                distances = np.linalg.norm(team_colors - dominant_color, axis=1)
-                team_id = np.argmin(distances)
+                # Determine the club using the jersey color
+                distances_to_club1 = np.linalg.norm(np.array(jersey_color) - np.array(club1.player_jersey_color))
+                distances_to_club2 = np.linalg.norm(np.array(jersey_color) - np.array(club2.player_jersey_color))
+
+                team_id = 0 if distances_to_club1 < distances_to_club2 else 1
+                team_color = club1.player_jersey_color if team_id == 0 else club2.player_jersey_color
 
                 # Assign a color for the team and annotate
-                team_color = team_colors[team_id]
                 team_color = tuple(int(c) for c in team_color)  # Convert to int (BGR format)
 
                 label = f"Team {team_id + 1}"  # Label the player by team number
@@ -128,8 +91,16 @@ def process_yolo_video_with_teams(model_path, video_path, output_path):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    from team_functions import Club
+
+    # Define the two clubs
+    club1 = Club(name="Team1", player_jersey_color=(232, 247, 248), goalkeeper_jersey_color=(6, 25, 21))
+    club2 = Club(name="Team2", player_jersey_color=(172, 251, 145), goalkeeper_jersey_color=(239, 156, 132))
+
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked_referee.mp4'
+        output_path='output_video/teams_tracked_km.mp4',
+        club1=club1,
+        club2=club2
     )
