@@ -146,7 +146,7 @@ if __name__ == "__main__":
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked_gk.mp4',
+        output_path='output_video/teams_tracked_possession_debug.mp4',
         club1=club1,
         club2=club2
     )

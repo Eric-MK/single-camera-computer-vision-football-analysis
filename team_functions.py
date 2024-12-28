@@ -18,21 +18,7 @@ class Club:
     player_jersey_color: Tuple[int, int, int]
     goalkeeper_jersey_color: Tuple[int, int, int]
 
-def create_club_model(club1: Club, club2: Club) -> Dict[str, np.ndarray]:
-    """
-    Creates a model for assigning clubs based on jersey colors.
 
-    Args:
-        club1 (Club): The first club object.
-        club2 (Club): The second club object.
-
-    Returns:
-        Dict[str, np.ndarray]: Centroids for players and goalkeepers.
-    """
-    return {
-        "player_centroids": np.array([club1.player_jersey_color, club2.player_jersey_color]),
-        "goalkeeper_centroids": np.array([club1.goalkeeper_jersey_color, club2.goalkeeper_jersey_color]),
-    }
 
 def predict_club(model: Dict[str, np.ndarray], extracted_color: Tuple[int, int, int], is_goalkeeper: bool = False) -> int:
     """
@@ -123,47 +109,5 @@ def get_jersey_color(frame: np.ndarray, bbox: Tuple[int, int, int, int], is_goal
 
 
 
-def assign_player_club(frame: np.ndarray, bbox: Tuple[int, int, int, int], model: Dict[str, np.ndarray],
-                        club_names: Tuple[str, str], is_goalkeeper: bool = False) -> str:
-    """
-    Determine the club for a player based on their jersey color.
 
-    Args:
-        frame (np.ndarray): The current video frame.
-        bbox (Tuple[int, int, int, int]): The bounding box coordinates (x1, y1, x2, y2).
-        model (Dict[str, np.ndarray]): The centroids for club jerseys.
-        club_names (Tuple[str, str]): Names of the two clubs.
-        is_goalkeeper (bool): Flag to indicate if the player is a goalkeeper.
 
-    Returns:
-        str: The name of the assigned club.
-    """
-    jersey_color = get_jersey_color(frame, bbox)
-    club_index = predict_club(model, jersey_color, is_goalkeeper)
-    return club_names[club_index]
-
-def assign_clubs(frame: np.ndarray, tracks: Dict[str, Dict[int, Any]], model: Dict[str, np.ndarray],
-                 club_names: Tuple[str, str]) -> Dict[str, Dict[int, Any]]:
-    """
-    Assign clubs to players and goalkeepers based on their jersey colors.
-
-    Args:
-        frame (np.ndarray): The current video frame.
-        tracks (Dict[str, Dict[int, Any]]): The tracking data for players and goalkeepers.
-        model (Dict[str, np.ndarray]): The centroids for club jerseys.
-        club_names (Tuple[str, str]): Names of the two clubs.
-
-    Returns:
-        Dict[str, Dict[int, Any]]: Updated tracking data with assigned clubs.
-    """
-    updated_tracks = tracks.copy()
-
-    for track_type in ['goalkeeper', 'player']:
-        for player_id, track in updated_tracks[track_type].items():
-            bbox = track['bbox']
-            is_goalkeeper = (track_type == 'goalkeeper')
-            club = assign_player_club(frame, bbox, model, club_names, is_goalkeeper)
-            track['club'] = club
-            track['club_color'] = model["goalkeeper_centroids" if is_goalkeeper else "player_centroids"][club_names.index(club)]
-
-    return updated_tracks
