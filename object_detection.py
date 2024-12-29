@@ -69,6 +69,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
         # Annotate frame with team colors and blue triangle for the ball
         for track in tracks:
             bbox = track[0]  # [x1, y1, x2, y2]
+            track_id = track[4]  # Track ID (correct index)
             class_id = track[3]  # Get class_id
 
             is_goalkeeper = (class_id == 1)  # Assuming class_id 1 is goalkeeper; adjust as needed
@@ -91,7 +92,8 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
                 # Assign a color for the team and annotate
                 team_color = tuple(int(c) for c in team_color)  # Convert to int (BGR format)
 
-                label = f"Team {team_id + 1}"  # Label the player by team number
+                # Add tracker ID to the label
+                label = f"Team {team_id + 1} | ID: {track_id}"  # Label the player by team number and tracker ID
                 cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), team_color, 2)
                 cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, team_color, 2)
 
@@ -135,7 +137,6 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
     cv2.destroyAllWindows()
 
 
-
 if __name__ == "__main__":
     from team_functions import Club
 
@@ -146,7 +147,7 @@ if __name__ == "__main__":
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked_possession_debug.mp4',
+        output_path='output_video/teams_tracked_possession_ids.mp4',
         club1=club1,
         club2=club2
     )
