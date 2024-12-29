@@ -7,13 +7,51 @@ from team_functions import (
 )
 
 def draw_blue_triangle(frame, bbox):
-    """Draw a blue triangle to represent the ball on the frame."""
+    """Draw a blue triangle to represent the ball on the frame with professional styling."""
     x1, y1, x2, y2 = bbox
     # Points for the triangle (using the center of the bbox)
     center_x = int((x1 + x2) / 2)
     center_y = int((y1 + y2) / 2)
     points = np.array([(center_x, center_y - 20), (center_x - 20, center_y + 20), (center_x + 20, center_y + 20)])
-    cv2.polylines(frame, [points], isClosed=True, color=(255, 0, 0), thickness=2)  # Blue color (BGR format)
+    
+    # Draw a filled triangle with semi-transparent blue
+    overlay = frame.copy()
+    cv2.fillPoly(overlay, [points], color=(255, 0, 0))  # Blue fill
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    cv2.polylines(frame, [points], isClosed=True, color=(0, 0, 255), thickness=2)  # Outline
+
+def draw_possession_stats(frame, team1_percent, team2_percent):
+    """Display possession stats with a professional design."""
+    height, width, _ = frame.shape
+    overlay = frame.copy()
+    bar_width = 300
+    bar_height = 30
+    bar_x = (width - bar_width) // 2
+    bar_y = 10
+    
+    # Draw a semi-transparent background
+    cv2.rectangle(overlay, (bar_x - 10, bar_y - 10), (bar_x + bar_width + 10, bar_y + bar_height + 10), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    
+    # Draw possession text
+    text = f"Team 1: {team1_percent:.1f}% | Team 2: {team2_percent:.1f}%"
+    cv2.putText(frame, text, (bar_x, bar_y + bar_height - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+def annotate_player(frame, bbox, label, team_color):
+    """Annotate players with professional styling."""
+    x1, y1, x2, y2 = map(int, bbox)
+    overlay = frame.copy()
+    # Draw semi-transparent rectangle for the bounding box
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), team_color, -1)
+    cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+    # Draw bounding box outline
+    cv2.rectangle(frame, (x1, y1), (x2, y2), team_color, 2)
+    # Add text label with a shadow
+    text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+    text_x, text_y = x1, y1 - 10
+    shadow_offset = 2
+    cv2.putText(frame, label, (text_x + shadow_offset, text_y + shadow_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    cv2.putText(frame, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
 def process_yolo_video_with_teams(model_path, video_path, output_path, club1, club2):
     model = YOLO(model_path)
@@ -93,9 +131,8 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
                 team_color = tuple(int(c) for c in team_color)  # Convert to int (BGR format)
 
                 # Add tracker ID to the label
-                label = f"Team {team_id + 1} | ID: {track_id}"  # Label the player by team number and tracker ID
-                cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), team_color, 2)
-                cv2.putText(frame, label, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, team_color, 2)
+                label = f"T{team_id + 1}-ID:{track_id}"  # Label the player by team number and tracker ID
+                annotate_player(frame, bbox, label, team_color)
 
                 # Collect player information for possession calculation
                 players.append((bbox, team_id))
@@ -126,8 +163,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
         else:
             possession_percent_team1 = possession_percent_team2 = 0
 
-        text = f"Team 1: {possession_percent_team1:.1f}% | Team 2: {possession_percent_team2:.1f}%"
-        cv2.putText(frame, text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        draw_possession_stats(frame, possession_percent_team1, possession_percent_team2)
 
         # Write annotated frame
         out.write(frame)
@@ -147,7 +183,7 @@ if __name__ == "__main__":
     process_yolo_video_with_teams(
         model_path='models/object.pt',
         video_path='input_video/08fd33_4.mp4',
-        output_path='output_video/teams_tracked_possession_ids.mp4',
+        output_path='output_video/teams_tracked_possession_style.mp4',
         club1=club1,
         club2=club2
     )
