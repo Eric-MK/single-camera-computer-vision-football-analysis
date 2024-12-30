@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 import os
+import subprocess
 from flask_cors import CORS
 from team_functions import Club
 from object_detection import process_yolo_video_with_teams  
@@ -60,6 +61,7 @@ def process_video():
 
     # Process the video
     try:
+        # Process the video with YOLO or any other processing you need
         process_yolo_video_with_teams(
             model_path='models/object.pt',  # Update with actual model path
             video_path=video_path,
@@ -67,15 +69,30 @@ def process_video():
             club1=club1,
             club2=club2
         )
+
+        # Convert the processed video to MP4 (H.264 + AAC codec) for browser compatibility
+        converted_output_filename = f"converted_{output_filename.split('.')[0]}.mp4"
+        converted_output_path = os.path.join(app.config['OUTPUT_FOLDER'], converted_output_filename)
+        
+        ffmpeg_command = [
+            'ffmpeg', '-i', output_path, 
+            '-vcodec', 'libx264', '-acodec', 'aac', 
+            '-strict', 'experimental', '-b:v', '1000k',
+            '-preset', 'fast', '-movflags', '+faststart',  # Optimize for web playback
+            converted_output_path
+        ]
+        subprocess.run(ffmpeg_command, check=True)
+
     except Exception as e:
         return jsonify({'error': f'Error processing video: {str(e)}'}), 500
 
-    # Return the path to the output video
-    return jsonify({'message': 'Video processed successfully', 'output_video': f'/output_video/{output_filename}'}), 200
+    # Return the path to the converted output video
+    return jsonify({'message': 'Video processed and converted successfully', 'output_video': f'/output_video/{converted_output_filename}'}), 200
 
 @app.route('/output_video/<filename>', methods=['GET'])
 def get_output_video(filename):
     """Serve the processed video to the frontend."""
+    # Ensure the mimetype is 'video/mp4' when serving the converted video
     return send_from_directory(app.config['OUTPUT_FOLDER'], filename, mimetype='video/mp4')
 
 if __name__ == '__main__':
