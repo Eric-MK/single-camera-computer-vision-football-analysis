@@ -88,7 +88,7 @@ def process_yolo_video_with_teams(model_path, video_path, output_path, club1, cl
             class_id = int(detection.cls[0])
             confidence = detection.conf[0]
 
-            # Exclude ball (class_id == 0) and referee (class_id == 3)
+            # Exclude referee (class_id == 3)
             if class_id != 3 and confidence >= 0.25:
                 x1, y1, x2, y2 = detection.xyxy[0]
                 bboxes.append([x1, y1, x2, y2])
